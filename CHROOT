@@ -1,0 +1,189 @@
+Setting up a chroot jail for rssh
+---------------------------------
+
+This document is intended to provide some hints for setting up a chroot jail
+for rssh v2.1.  It is virtually impossible to provide exact instructions for
+this, due to differences in things like the libraries on different systems,
+whether or not the binaries are statically linked, etc.
+
+The important things to note about building a chroot jail is that you must
+duplicate parts of the root file system, those parts containing the libraries
+needed for whatever binaries you will be using, the configuration files for
+those binaries, /etc/passwd, and possibly other things.  So if your chroot
+jail is /usr/chroot, you'll need to copy those items into the same locations
+relative to /usr/chroot.  For example, you will need to copy /etc/passwd to
+/usr/chroot/etc/passwd.
+
+You will also need to copy the binaries for rssh, scp, and sftp-server into
+your chroot jail, in the same locations as they were configured by rssh, but
+relative to the chroot jail.  For example, by default on Red Hat systems (my
+development platform), the binaries you need to use rssh are usually installed
+in the following locations:
+
+  /usr/bin/scp
+  /usr/libexec/openssh/sftp-server
+  /usr/local/bin/rssh_chroot_helper
+
+(assuming you did not specify a --prefix when you configured rssh).
+
+Presumably, rssh detected the scp and sftp-server binaries in those locations,
+and will be looking for them in those locations, RELATIVE TO THE ROOT OF THE
+CHROOT JAIL.  So you will need to copy these files into the chroot jail:
+
+  # cp /usr/bin/scp /usr/chroot/usr/bin/scp
+  # cp /usr/libexec/openssh/sftp-server /usr/chroot/usr/libexec/openssh/sftp-server
+  # cp /usr/local/bin/rssh_chroot_helper  /usr/chroot/usr/local/bin/rssh_chroot_helper
+
+[Before you copy the files, you obviously need to create the directory
+structure to copy them into.]
+
+Next, you will need copies of the libraries these programs are linked against.
+This can be difficult to determine on some systems, which may require the use
+of the ldd program, and/or the use of strace or truss.  On Red Hat systems,
+ldd shows that the following libraries are needed for scp:
+
+  $ ldd `which scp`
+        libresolv.so.2 => /lib/libresolv.so.2 (0x40029000)
+        libutil.so.1 => /lib/libutil.so.1 (0x4003c000)
+        libz.so.1 => /usr/lib/libz.so.1 (0x4003f000)
+        libnsl.so.1 => /lib/libnsl.so.1 (0x4004d000)
+        libcrypto.so.2 => /lib/libcrypto.so.2 (0x40062000)
+        libkrb5.so.3 => /usr/kerberos/lib/libkrb5.so.3 (0x40136000)
+        libk5crypto.so.3 => /usr/kerberos/lib/libk5crypto.so.3 (0x40193000)
+        libcom_err.so.3 => /usr/kerberos/lib/libcom_err.so.3 (0x401a4000)
+        libc.so.6 => /lib/i686/libc.so.6 (0x42000000)
+        libdl.so.2 => /lib/libdl.so.2 (0x401a6000)
+        /lib/ld-linux.so.2 => /lib/ld-linux.so.2 (0x40000000)
+
+You need to copy each of these in turn into the chroot jail, or else rssh will
+not be able to execv() the binary.  The error message logged will likely be
+something to the effect of "no such file or directory", in such a case.
+Following our example above, you would use the following commands:
+
+  # cp /lib/libresolv.so.2 /usr/chroot/lib/libresolv.so.2
+  # cp /lib/libutil.so.1 /usr/chroot/lib/libutil.so.1
+  # cp /usr/lib/libz.so.1 /usr/chroot/usr/lib/libz.so.1
+  (etc.)
+
+You need to make sure that you do this for sftp-server as well, in case the
+libraries required are different.  If rssh is linked statically, you should not
+need to worry about what libraries it is linked against.  Otherwise, it may be
+required.
+
+Note that the last two libraries in this example are used by the dynamic
+linker.  If any of the binaries in question are linked dynamically (and in
+most cases, this will be true), you need to also copy any configuration files
+for the dynamic linker into your chroot jail.  On Linux, you want the files
+/etc/ld.so* to be copied.
+
+Config files
+------------
+
+You should not need to copy the config file for rssh, since it will already be
+done being read before the call to chroot().  You will likely need to copy
+/etc/passwd, so that the system can identify the user using the program.  Some
+programs may fail if the user can not be identified.  In my testing, scp
+errored out if the username could not be determined.  If you need to copy the
+password file, the following will suffice.
+
+  # cp /etc/passwd /usr/chroot/etc/passwd
+
+You probably will also need to copy the files related to the dynamic linker,
+for example on Red Hat Linux:
+
+  # cp /etc/ld.so* /usr/chroot/etc/
+
+
+Authentication concerns
+-----------------------
+
+You may need to copy additional libraries, if your system depends upon them
+for authentication.  For example, in my testing, I needed to copy
+/lib/libnss_files.so.? into the chroot jail.  Without it, the scp command
+failed, complaining that my user ID was an unknown user.  If you use LDAP
+authentication on the server, you will probably need to also copy
+libnss_ldap.so.? into your chroot jail.
+
+
+Logging
+-------
+
+On most systems, the syslog() library function works by writing messages into
+a FIFO, such as for example /dev/log.  Once the chroot() system call is
+executed, the program will no longer have access to /dev/log.  Many systems
+have a syslogd that will allow you to specify additional FIFOs which syslogd
+will listen to.  On Linux systems, this is generally done with the -a option
+to syslogd.  In order for logging to continue to work properly once inside the
+chroot jail, you will need to modify your start-up scripts to start syslog
+with an additional FIFO inside the jail, something like this:
+
+  /sbin/syslogd -a /usr/chroot/dev/log
+
+You will need to make sure the directory /usr/chroot/dev exists.
+
+
+User details
+------------
+
+You probably want to have a home area inside the chroot jail, with home
+directories for users inside the chroot.  The /etc/passwd file should contain
+the full path to the user's home directories.  For example, if the user's home
+directory is /usr/chroot/home/joe, then that is the directory that should be
+specified in /etc/passwd.  The directory specified in the copy of the passwd
+file inside the chroot jail is not ever used, so it does not matter if you
+change it to the path relative to the root of the chroot jail (i.e. /home/joe,
+in this case).
+
+When it executes, rssh_chroot_helper will determine if the user's home
+directory is contained within the chroot jail, and automatically put the user
+in it if it is.  If it is not, the helper program will leave the user in the
+root of the chroot jail.  You should take care to make sure that you are
+getting the behavior that you want before putting a chrooted rssh into
+production.
+ 
+Individual jails for different users
+------------------------------------
+
+In v2.1, you are now able to specify the location of different chroot jails
+for different users, whether or not to chroot individual users, etc.  You
+might be tempted to create individual jails for each different user, and you
+can do that, BUT...  It's probably a bad idea.
+
+There are several reasons for this.  First, it uses lots of disk space,
+because you need to copy the libraries and such into each one (though in some
+circumstances, you might be able to get away with creating hard links and/or
+symbolic links -- maybe).  Another reason is that in order to log chroot
+activity, you need to create a socket for syslog to log to (i.e. /dev/log, see
+above) in each of the chroot jails.  However, the number of sockets syslog can
+listen to is generally limited.  On most Linux systems, that limit is a
+maximum of 20, though it can be changed by editing the source code to syslogd.
+So if you go with individual chroot jails, you either need to be satisfied
+without logging for most of your users, or recompile syslogd and manually
+configure it to open a socket in each of your users' jails.  And while I
+haven't done it, I suspect creating large numbers of sockets for syslogd to
+listen to will make logging to syslog somewhat painful.
+
+My recommendation is, if you really really really need individual chroot
+jails, use them.  But if you can, configure a single jail where the majority
+of your users will live, but control their access carefully via file
+permissions.  Only provide separate jails for very sensitive or troublesome
+users (or in the latter case, just disable their account and be done with
+it...  =8^)
+
+Conclusion
+----------
+
+Setting up a proper chroot jail can be difficult, and it is always a very
+environment-specific operation.  Because of this, I can not and will not
+provide any sort of support for setting up chroot jails.  However, in the near
+future, I will make sure there is a mailing list for rssh, where you can ask
+questions.
+
+If you are having problems, make sure that you have logging set up properly,
+if nothing else.  Doing so will help you determine what kind of problems you
+are experiencing, as error messages will be logged to syslog.
+
+Good luck!
+
+-DM
+

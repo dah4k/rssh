@@ -1,0 +1,76 @@
+SECURITY
+--------
+
+Aug 22 2002
+
+  1. Summary
+  2. Details
+
+Summary
+-------
+
+If you are using OpenSSH >= 3.5, you can edit sshd_config to be sure that
+PermitUserEnvironment=no appears in the file and is not commented out, and
+then ignore the rest of this file (well, read it anyway, so you understand the
+issues).  This option did not exist prior to OpenSSH 3.5, so if you're using
+and older version, the rest of this definitely applies to you!
+
+The details of the problem, including a description of how a user might
+exploit the problem, are discussed below. It is currently not completely
+possible to prevent users from circumventing rssh to gain access to the
+restricted system, unless one of two precautions is taken:
+
+    * the rssh binary is compiled statically
+    * efforts are made to prevent the restricted users' environment files from
+      being user-modifiable
+
+In practice, the latter means that an rssh user's home directory must not be
+writable to the user, nor must their .ssh directory (if it exists) be
+writable. It is not sufficient to limit the .ssh directory, as users could use
+sftp to remove or rename the .ssh directory, and create a new one which is
+writable by them. Note that this means they can not own their home directory
+either, as if they do they can use sftp to chmod it. Alternately on Linux
+systems using file systems which support the chattr command, you could chattr
++i the .ssh directory.
+
+For this reason, as of rssh v0.9.3, the binary is compiled statically by
+default. Note that this results in a very large binary (>400k), unlike when
+rssh is compiled and linked dynamically. You can override static compilation
+by removing the -static flag from the CFLAGS macro in Makefile (after
+configure is run); however this is only recommended for sites who basically
+trust their users, or aren't concerned about the possibility of advanced users
+gaining shell access to the host on which access has been restricted via rssh.
+Future versions of rssh will include an option to configure to enable/disable
+static compilation explicitly, so editing the makefile will not be necessary.
+
+Details
+-------
+
+Please note, the flaw is not in rssh itself. The problem is that the OpenSSH
+Project's sshd reads $HOME/.ssh/environment when a user first connects
+(regardless of whether it's via ssh, scp, or sftp), allowing users to set
+variables in their environment. A user could scp a file to that location
+containing a line that sets variables such as LD_LIBRARY_PATH and/or
+LD_PRELOAD, allowing the user to cause binaries exec()'d by the sshd daemon to
+be dynamically linked against libraries of their choosing. This means that
+users can cause rssh itself to execute arbitrary code, and the only thing that
+you can do to prevent this attack is to control users' environments, and make
+absolutely sure they can not write to their .ssh directory.
+
+In OpenSSH 3.4 and before, there is no way to prevent user environment files
+from being sourced.  As of 3.5, sshd has the option PermitUserEnvironment,
+which should be set to no.
+
+Additionally, according to the sshd(8) man page from at least some releases of
+OpenSSH, the commands listed in the $HOME/.ssh/rc file are executed with
+/bin/sh instead of the user's defined shell. This appears not to be the case
+on systems I had available to test on, despite the man page; commands were
+executed using the user's configured shell (rssh), which did not allow the
+execution. However if it is true on your system, then a malicious user may be
+able to circumvent rssh by uploading a file to $HOME/.ssh/rc which will be
+executed by /bin/sh on that system.
+
+I recommend that you upgrade to OpenSSH 3.5 as soon as it becomes available,
+if you wish to use rssh without restricting ownerships and permissions of
+users' home directories, and/or compiling statically.
+

@@ -1,0 +1,227 @@
+/*
+ * rssh.c - restricted shell for ssh to allow scp or sftp only
+ * 
+ * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ *
+ * This program is licensed under a BSD-style license, as follows: 
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *	notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *	notice, this list of conditions and the following disclaimer in the
+ *	documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+/* SYSTEM INCLUDES */
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif /* HAVE_CONFIG_H */
+#include <stdio.h>
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif /* HAVE_STDLIB_H */
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif /* HAVE_UNISTD_H */
+#ifdef HAVE_ERRNO_H
+#include <errno.h>
+#endif /* HAVE_ERRNO_H */
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif /* HAVE_STRING_H */
+#ifdef HAVE_LIBGEN_H
+#include <libgen.h>
+#endif /* HAVE_LIBGEN_H */
+#ifdef HAVE_SYSLOG_H
+#include <syslog.h>
+#endif /* HAVE_SYSLOG_H */
+#ifdef HAVE_PWD_H
+#include <pwd.h>
+#endif /* HAVE_PWD_H */
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif /* HAVE_SYS_TYPES_H */ 
+
+
+/* LOCAL INCLUDES */
+#include "rssh.h"
+#include "rsshconf.h"
+#include "pathnames.h"
+#include "log.h"
+#include "util.h"
+
+
+/* FILE SCOPE FUNCTION DECLARATIONS */
+
+char **build_shell_args( struct passwd uinfo, ShellOptions_t *opts, 
+		         char *cmdline, char **cmd );
+
+/* GLOBAL VARIABLES */
+extern int errno;
+
+char *progname;
+char *username;
+char *version = 
+	"@PACKAGE_STRING@ (c) 2002-3 Derek D. Martin <@PACKAGE_BUGREPORT@>";
+
+/* MAIN PROGRAM */
+int main( int argc, char **argv )
+{
+	char		**argvec = NULL;	/* vector for execv() */
+	char		*cmd;	/* name of the command to execv() */
+	ShellOptions_t	opts;	/* options configured by config file */
+	struct passwd	uinfo;	/* info about the user running rssh */
+	struct passwd	*temp;	/* copy temp into uinfo */ 
+
+	/* initialize variables to defaults */
+	opts.rssh_umask = 022;
+	opts.shell_flags = 0;
+	opts.chroot_path = NULL;
+	memset(&uinfo, 0, sizeof uinfo);
+	if ( (putenv("PATH=/bin:/usr/bin")) ){
+		log_msg("fatal error: could not set PATH environment var");
+		exit(1);
+	}
+
+	/* see who we are  and set up logging */
+	if ( (temp = getpwuid(getuid())) ){
+		uinfo = *temp;
+		username = uinfo.pw_name;
+	}
+	else
+		/* this probably should never happen */
+		username = "unknown user!";
+	progname = strdup(log_make_ident(basename(argv[0])));
+	log_set_facility(LOG_DAEMON);
+	log_open();
+
+	/* process the config file */
+	if ( !(read_shell_config(&opts, PATH_RSSH_CONFIG)) ){
+		log_set_priority(LOG_ERR);
+		log_msg("there were errors processing configuration file!");
+	}
+
+	/* set the umask */
+	umask(opts.rssh_umask);
+
+	/* arg count check */
+	if ( argc == 2 && !( strcmp(argv[1], "-v")) ){
+		printf("%s\n\n", version);
+		exit(0);
+	}
+	if ( argc < 3 ) fail(opts.shell_flags, argc, argv);
+
+	/* if first arg is anything but -c, it's no good */
+	if ( strcmp("-c", argv[1]) ) fail(opts.shell_flags, argc, argv);
+
+	/* get the arguments for execv() */
+	if ( !(argvec = build_shell_args(uinfo, &opts, argv[2], &cmd)) )
+		fail(opts.shell_flags, argc, argv);
+
+	/* if all that passed, exec the relevant command */
+	execv(cmd, argvec);
+
+	/* we only get here if the exec fails */
+	fprintf(stderr, "%s: execv() failed.  ", cmd);
+	log_set_priority(LOG_ERR);
+	log_msg("execv failed: cmd line %s", argv[2]);
+
+	switch (errno){
+	case EACCES:
+	case ENOTDIR:
+	case ENOENT:
+		fprintf(stderr, "%s: %s is not an executable file, or "
+			"permission denied.\n\n", basename(argv[0]), 
+			argvec[0]);
+		break;
+	case EPERM:
+		/* this shouldn't happen, as we don't run SUID */
+		fprintf(stderr, "%s: FS mounted nosuid or process is being "
+			"traced\n (and you are not root)\n\n", 
+			basename(argv[0]));
+		break;
+	default:
+			fprintf(stderr, "an unknown error occurred.\n\n");
+	}
+	
+	exit(1);
+}
+
+
+char **build_shell_args( struct passwd uinfo, 
+			 ShellOptions_t *opts,
+			 char *cmdline,
+		         char **cmd )
+{
+	char    **argvec;       /* argument vector for new cmd line */
+	char	*homedir;	/* relative to chroot */
+	char	*root;		/* the chroot dir */
+	char	*temp;		/* to build chroot helper cmd line */
+	int	len;
+
+	/*
+	 * determine if the command in cmdline is acceptable to run, and store
+	 * name of program to exec in cmd
+	 */
+	if ( !(*cmd = check_command_line(cmdline, opts)) ) return NULL;
+
+	/* if we need to do chroot processing, do it */
+	if ( opts->shell_flags & RSSH_USE_CHROOT ){
+		/* create vector of pointers to command line arguments */
+		root = opts->chroot_path;
+		argvec = build_arg_vector(cmdline, 4);
+		argvec[0] = PATH_CHROOT_HELPER;
+		argvec[1] = root;
+		if ( !(strcmp(*cmd, PATH_SCP)) )
+			argvec[2] = "1";
+		else
+			argvec[2] = "2";
+		if ( !(homedir = extract_root(root, uinfo.pw_dir)) )
+			homedir = strdup("/");
+		argvec[3] = homedir;
+
+		/* change the command to run to the chroot helper */
+		*cmd = PATH_CHROOT_HELPER;
+
+		/* set up buffer to log command line ('"' + ' ' + '\0' = 9) */
+		len = strlen(cmdline) + strlen(root) + strlen(homedir) + 
+		      strlen(argvec[2]) + strlen(PATH_CHROOT_HELPER) + 9;
+		if ( !(temp = (char *)malloc(len)) ){
+			log_set_priority(LOG_ERR);
+			log_msg("OOM error in build_shell_args() (fatal)");
+			exit(1);
+		}
+
+		/* stuff the args into the buffer */
+		snprintf(temp, len, "%s \"%s\" %s \"%s\" %s",
+			 PATH_CHROOT_HELPER,
+			 root,
+			 argvec[2],
+			 homedir,
+			 cmdline);
+
+		/* now log 'em */
+		log_set_priority(LOG_INFO);
+		log_msg("chroot cmd line: %s", temp);
+
+		return argvec;
+	}
+
+	/* return vector of pointers to command line arguments */
+	return build_arg_vector(cmdline, 0);
+}

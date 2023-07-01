@@ -1,0 +1,70 @@
+1.0.0
+
+Initial release version (non-beta)
+
+1.0.1
+
+Added support to configure to check for OpenSSH 3.5, and disables static
+compilation if found
+
+1.0.2
+
+Automake support
+
+1.0.3
+
+Uh, I forgot to update this
+
+1.0.4
+
+minor bug fix
+
+2.0.0
+
+Some code clean-up, and added config file, with support for:
+
+  - setting default umask
+  - configuring whether scp and/or sftp are allowed
+  - setting the syslog facility to which to log
+  - support for chroot jails
+
+...and there was much rejoicing.  All configuration options are currently
+global.  In the next major release of rssh, they will be configurable on a
+per-user basis (which will override global settings).
+
+Added rssh_chroot_helper for (hopefully) implementing the chroot jail
+securely.
+
+2.0.1
+
+ - fixed bug preventing scp from working
+ - documentation update for using chroot jails
+ - updated the INSTALL file with hints for Solaris 
+
+2.0.2
+
+ - another bug with scp
+
+2.0.3
+
+ - added SECURITY file to the distribution
+ - removed references to scpsh and sftpsh from README
+ - changed strcmp in main.c to use PATH_SCP rather than scp
+ - made rssh_chroot_helper check # of args, plus minor log mods to support
+ - minor fixes in CHROOT hints file
+ - actually called umask() to set the umask...
+ - added patches to configure.ac for compiling on non-GNU platforms
+
+2.0.4
+
+ - fixed quote processing in config file parser
+ - fixed command line argvec building for args with spaces
+ - cleaned up a number of other little verbiage things, etc.
+ - changed default shell opts to allow only scp if config file doesn't exist
+
+2.1.0
+
+ - added per-user configuration
+ - fixed a number of heretofore unnoticed bugs in the parser and elsewhere
+ - added examples to the config file
+ - updated documentation

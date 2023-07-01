@@ -1,0 +1,62 @@
+rssh installation
+-----------------
+
+To install rssh, the following steps should suffice:
+
+  $ ./configure
+  $ make
+  $ su root
+  # make install
+
+If you are already root, make install should suffice; however it is generally
+considered bad practice to build software as root.  To change where rssh is
+installed, use the --prefix option to configure:
+
+  $ ./configure --prefix=/var/rssh
+
+The configure script will look for the scp and sftp-server binaries in
+common locations.  If it does not find them, you must set the location manually
+using the --with-scp and --with-sftp-server options, like so:
+
+  $ ./configure --with-scp=/path/to/scp --with-sftp-server=/var/lib/sftp-server
+
+The program will not work properly if the paths for these executables is not
+correct.  If you are planning to use chroot jails, you need to make sure you
+have copies of those binaries at the same configured locations, RELATIVE TO
+THE ROOT OF THE CHROOT JAIL.  See the file CHROOT for more information about
+setting up a chroot jail.
+
+
+STATIC vs. DYNAMIC LINKING
+--------------------------
+
+Because of the security implications mentioned in the file SECURITY, the
+default is to compile rssh statically.  Note however that this results in a
+very large executable size.  If you wish to use shared libraries with rssh,
+you can do so by removing the -static from the variable CFLAGS in the first
+few lines of the file Makefile.  Warning: you should only do this if at least
+one of the following is true:
+
+  - you are using rssh with OpenSSH 3.5 or later and have disabled user
+    environment files
+  - you have made sure the users' home directories and .ssh director are
+    non-writable
+  - you don't care about your users' ability to circumvent rssh.
+
+Otherwise, your users will be able to execute arbitrary commands and gain
+shell access to the system you are trying to restrict with rssh.
+
+Note that ./configure now detects if you have OpenSSH v3.5 installed, and if
+so will use dynamic linking by default.  However, it is still up to the system
+administrator to be sure to use the PermitUserEnvironment=no option when
+configuring sshd.  Failing to do so will allow users to circumvent the
+protections offered by rssh.
+
+SOLARIS USERS TAKE NOTE: Due to brain damage in Solaris's C libraries, it is
+very difficult to build static binaries (of just about any program) on
+Solaris, and even if you succeed, the binaries you build may not work.  Make
+sure you run the configure script with --disable-static to build dynamically
+linked binaries.  This implies that you should be running OpenSSH 3.5 or
+later, with the option PermitUserEnvironment set to no, for security reasons.
+See the file SECURITY and/or the rssh man page for more information.
+

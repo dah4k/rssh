@@ -1,0 +1,16 @@
+rssh readme
+-----------
+
+The purpose of rssh is to allow system administrators to restrict ssh access
+to a particular host.  It can be used to provide scp access, sftp access, or
+both.  Formerly, this was done based on the name of the shell binary (or
+symlink to it), but is now done via config file.
+
+IMPORTANT: If you do not want your users to be able to circumvent rssh, read the
+security notes in the file SECURITY, and note the section about linking in the
+file INSTALL.
+
+For instructions on how to install rssh, see the file INSTALL.  For more
+information about using chroot jails with rssh, see the file CHROOT.
+
+rssh is written and maintained by Derek D. Martin <code at pizzashack dot org>
