@@ -35,7 +35,7 @@ both.
 
 %files
 %defattr(644, root, root, 0755)
-%doc AUTHORS ChangeLog CHROOT COPYING README SECURITY TODO
+%doc AUTHORS ChangeLog CHROOT COPYING README SECURITY TODO conf_convert.sh mkchroot.sh
 %doc %{_mandir}/man?/*
 %config(noreplace) %{_sysconfdir}/rssh.conf
 %attr(755, root, root) %{_bindir}/rssh

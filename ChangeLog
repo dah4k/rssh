@@ -1,23 +1,96 @@
-1.0.0
+2.3.4
+ - Fixed several problems with argument validation
+ - Added -Wall and cleaned up compiler output
+ - Installing rssh.conf as rssh.conf.default
+ 
+2.3.3
 
-Initial release version (non-beta)
+ - Fixed escalation problem when not enough permission bits are specified.  As a
+   side effect of this, you now MUST have a config file.
+ - Fixed the bug in rssh_chroot_helper where, if parsing the config file fails,
+   and logging is turned off, rssh_chroot_helper segfaults
 
-1.0.1
+2.3.2
 
-Added support to configure to check for OpenSSH 3.5, and disables static
-compilation if found
+ - fixed segfault due to checking the length of variables that I forgot to
+   remove from build_arg_vector() since the chroot root exploit fix in 2.3.0 
 
-1.0.2
+2.3.1
 
-Automake support
+ - fixed stupid bug that caused rssh not to allow rsync and rdist
 
-1.0.3
+2.3.0
 
-Uh, I forgot to update this
+ - modified chroot_helper to parse the config file, to avoid arbitrary
+   chroot() (and thus root compromise)
+ - numerous documentation updates
+ - fix for va_start()/va_end()-related segfault on 64-bit architecture
+ - small bit of code cleanup
 
-1.0.4
+2.2.3
 
-minor bug fix
+ - added checks for command execution arguments to scp, rdist, rsync
+
+2.2.2
+
+ - string formatting bug fixed in log.c
+ - small bug processing chroot path fixed in rsshconf.c
+ - -v now outputs pre-configured paths of important files
+ - extra debugging messages
+ - documentation updates for the wordexp() shell problem
+
+2.2.1
+
+ - added missing code for parsing per-user options
+
+2.2.0
+
+ - fixed a security hole where chrooted users could enumerate files outside
+   the jail
+ - fixed a bug handling sftp-server checking
+ - added support for cvs, rdist, and rsync
+ - documentation clarifications and updates.
+ - added conf_convert.sh to convert old rssh.conf files to new format
+ - added mkchroot.sh to set up a chroot jail (mostly for Red Hat systems)
+ - reversed the direction of the ChangeLog file...  :)
+
+2.1.1
+
+ - updated build environment to facilitate building RPMs
+
+2.1.0
+
+ - added per-user configuration
+ - fixed a number of heretofore unnoticed bugs in the parser and elsewhere
+ - added examples to the config file
+ - updated documentation
+
+2.0.4
+
+ - fixed quote processing in config file parser
+ - fixed command line argvec building for args with spaces
+ - cleaned up a number of other little verbiage things, etc.
+ - changed default shell opts to allow only scp if config file doesn't exist
+
+2.0.3
+
+ - added SECURITY file to the distribution
+ - removed references to scpsh and sftpsh from README
+ - changed strcmp in main.c to use PATH_SCP rather than scp
+ - made rssh_chroot_helper check # of args, plus minor log mods to support
+ - minor fixes in CHROOT hints file
+ - actually called umask() to set the umask...
+ - added patches to configure.ac for compiling on non-GNU platforms
+
+2.0.2
+
+ - another bug with scp
+
+2.0.1
+
+ - fixed bug preventing scp from working
+ - documentation update for using chroot jails
+ - updated the INSTALL file with hints for Solaris 
 
 2.0.0
 
@@ -35,36 +108,24 @@ per-user basis (which will override global settings).
 Added rssh_chroot_helper for (hopefully) implementing the chroot jail
 securely.
 
-2.0.1
+1.0.4
 
- - fixed bug preventing scp from working
- - documentation update for using chroot jails
- - updated the INSTALL file with hints for Solaris 
+minor bug fix
 
-2.0.2
+1.0.3
 
- - another bug with scp
+Uh, I forgot to update this, and I don't remember what I changed...  ;-)
 
-2.0.3
+1.0.2
 
- - added SECURITY file to the distribution
- - removed references to scpsh and sftpsh from README
- - changed strcmp in main.c to use PATH_SCP rather than scp
- - made rssh_chroot_helper check # of args, plus minor log mods to support
- - minor fixes in CHROOT hints file
- - actually called umask() to set the umask...
- - added patches to configure.ac for compiling on non-GNU platforms
+Automake support
 
-2.0.4
+1.0.1
 
- - fixed quote processing in config file parser
- - fixed command line argvec building for args with spaces
- - cleaned up a number of other little verbiage things, etc.
- - changed default shell opts to allow only scp if config file doesn't exist
+Added support to configure to check for OpenSSH 3.5, and disables static
+compilation if found
 
-2.1.0
+1.0.0
 
- - added per-user configuration
- - fixed a number of heretofore unnoticed bugs in the parser and elsewhere
- - added examples to the config file
- - updated documentation
+Initial release version (non-beta)
+

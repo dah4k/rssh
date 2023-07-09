@@ -1,8 +1,7 @@
-
 /*
- * pathnames.h - macro definitions for rssh paths
+ * argvec.h - headers for argvec function for rssh
  * 
- * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ * Copyright 2005 Derek D. Martin ( code at pizzashack dot org ).
  *
  * This program is licensed under a BSD-style license, as follows: 
  *
@@ -28,22 +27,11 @@
  *
  */
 
-#ifndef _rssh_pathnames_h
-#define _rssh_pathnames_h
+#ifndef _argvec_h
+#define _argvec_h
 
-#define PATH_SFTP_SERVER	"@sftp_path@"
-#define PATH_SCP		"@scp_path@"
-#define PATH_CVS		"@cvs_path@"
-#define PATH_RDIST		"@rdist_path@"
-#define PATH_RSYNC		"@rsync_path@"
+#include "rsshconf.h"
 
-/* these generally are overridden by the makefile */
-#ifndef PATH_RSSH_CONFIG
-#define PATH_RSSH_CONFIG	"/etc/rssh.conf"
-#endif /* PATH_RSSH_CONFIG */
+char **build_arg_vector( char *str, size_t reserve );
 
-#ifndef PATH_CHROOT_HELPER
-#define PATH_CHROOT_HELPER	"/usr/local/bin/rssh_chroot_helper"
-#endif /* PATH_CHROOT_HELPER */
-
-#endif /* _rssh_pathnames_h */
+#endif /* _argvec_h */

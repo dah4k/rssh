@@ -52,6 +52,7 @@
 #include "rssh.h"
 #include "log.h"
 #include "rsshconf.h"
+#include "util.h"
 
 /*  MACRO DEFINITIONS */
 #define eat_assignment(x)	eat_char_token('=', x, FALSE, TRUE)
@@ -67,6 +68,9 @@ const char *keywords[] = {
 	"#",		/* start a comment */
 	"allowscp",
 	"allowsftp",
+	"allowcvs",
+	"allowrdist",
+	"allowrsync",
 	"chrootpath",
 	"logfacility",
 	"umask",
@@ -74,6 +78,7 @@ const char *keywords[] = {
 	NULL
 };
 
+int log=0;
 
 /* flag to tell config parser to stop processing config file */
 static bool got_user_config = FALSE;
@@ -90,6 +95,15 @@ int process_allow_scp( ShellOptions_t *opts, const char *line,
 		       const int lineno );
 
 int process_allow_sftp( ShellOptions_t *opts, const char *line, 
+		        const int lineno );
+
+int process_allow_cvs( ShellOptions_t *opts, const char *line, 
+		        const int lineno );
+
+int process_allow_rdist( ShellOptions_t *opts, const char *line, 
+		        const int lineno );
+
+int process_allow_rsync( ShellOptions_t *opts, const char *line, 
 		        const int lineno );
 
 int get_token( const char *str, char *buf, const int buflen, 
@@ -111,18 +125,22 @@ int get_asgn_param( const char *line, const int lineno, char *buf,
 /* EXTERNALLY VISIBLE FUNCTIONS */
 
 /* returns FALSE if there was an error, TRUE if not */
-int read_shell_config( ShellOptions_t *opts, const char *filename )
+int read_shell_config( ShellOptions_t *opts, const char *filename, int do_log )
 {
         FILE 	*cfg_file;		/* config file ptr */
         int 	linenum;		/* cfg file line counter */
 	int 	status = TRUE;		/* were all the cfg lines good? */
         char 	line[CFG_LINE_LEN + 1];	/* buffer to hold region */
 
+	log = do_log;
 	memset(line, 0, CFG_LINE_LEN + 1);
         cfg_file = fopen(filename, "r");
         if (!cfg_file) {
-		log_set_priority(LOG_WARNING);
-		log_msg("config file (%s) missing, using defaults", filename);
+		if (log){
+			log_set_priority(LOG_WARNING);
+			log_msg("config file (%s) missing, using defaults", 
+				filename);
+		}
                 opts->shell_flags = RSSH_ALLOW_SCP;
 		return FALSE;
         }
@@ -156,8 +174,10 @@ int process_config_line( ShellOptions_t	*opts,
 		*newline = '\0';
 	else {
 		/* there is no newline - log the error and find the EOL */
-		log_set_priority(LOG_ERR);
-		log_msg("line %d: line too long", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("line %d: line too long", lineno);
+		}
 		while ( fgets(tmp, CFG_LINE_LEN, cfg_file) ){
 			if ( (newline = strchr(line, '\n')) )
 				break;
@@ -185,30 +205,48 @@ int process_config_line( ShellOptions_t	*opts,
 			return FALSE;
 		return TRUE;
 	case 3:
+		/* allow cvs */
+		if ( !(process_allow_cvs(opts, line + pos, lineno) ) )
+			return FALSE;
+		return TRUE;
+	case 4:
+		/* allow rdist */
+		if ( !(process_allow_rdist(opts, line + pos, lineno) ) )
+			return FALSE;
+		return TRUE;
+	case 5:
+		/* allow rsync */
+		if ( !(process_allow_rsync(opts, line + pos, lineno) ) )
+			return FALSE;
+		return TRUE;
+	case 6:
 		/* default chroot path */
 		if ( !(process_chroot_path(opts, line + pos, lineno) ) )
 			return FALSE;
 		return TRUE;
-	case 4:
+	case 7:
 		/* syslog log facility */
 		if ( !(process_log_facility(opts, line + pos, lineno) ) )
 			return FALSE;
 		return TRUE;
-	case 5:
+	case 8:
 		/* set the user's umask */
 		if ( !(process_umask(opts, line + pos, lineno) ) )
 			return FALSE;
 		return TRUE;
-	case 6:
+	case 9:
 		/* user */
 		if ( !(process_user(opts, line + pos, lineno) ) )
 			return FALSE;
 		return TRUE;
 	default:
 		/* the keyword is unknown */
-		log_set_priority(LOG_ERR);
-		log_msg("line %d: syntax error parsing config file", lineno);
-		if ( keywrd[0] )
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("line %d: syntax error parsing config file",
+				       	lineno);
+		}
+		if ( keywrd[0] && log )
 			log_msg("unknown keyword: %s", keywrd);
 		return FALSE;
 	}
@@ -292,8 +330,10 @@ int get_token( const char *str, char *buf, const int buflen,
 	/* initialize strings and pointers */
 	memset(buf, 0, buflen);
 	if ( !(copy = strdup(str)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("OOM error in get_token() (fatal)");
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("OOM error in get_token() (fatal)");
+		}
 		exit(1);
 	}
 	start = copy;
@@ -393,11 +433,14 @@ int process_allow_scp( ShellOptions_t *opts,
 		       const int lineno )
 {
 	if ( !eat_comment(line) ){
-		log_msg("line %d: syntax error parsing config file", lineno);
+		if (log) log_msg("line %d: syntax error parsing config file",
+				       	lineno);
 		return FALSE;
 	}
-	log_set_priority(LOG_INFO);
-	log_msg("allowing scp to all users");
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("allowing scp to all users");
+	}
 	opts->shell_flags |= RSSH_ALLOW_SCP;
 	return TRUE;
 }
@@ -417,12 +460,99 @@ int process_allow_sftp( ShellOptions_t *opts,
 	int pos;
 
 	if ( !(pos = eat_comment(line)) ){
-		log_msg("line %d: syntax error parsing config file", lineno);
+		if (log) log_msg("line %d: syntax error parsing config file", 
+				lineno);
+		return FALSE;
+	}
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("allowing sftp to all users");
+	}
+	opts->shell_flags |= RSSH_ALLOW_SFTP;
+	return TRUE;
+}
+
+
+/* 
+ * process_allow_cvs() - make sure there are no tokens after the keyword,
+ *                        other than a possible comment.  If there are
+ *                        additional tokens other than comments, there is a
+ *                        syntax error, and FALSE is returned.  Otherwise, the
+ *                        line is ok, so opts are set to allow cvs, and TRUE
+ *                        is returned.
+ */
+int process_allow_cvs( ShellOptions_t *opts, 
+		       const char *line,
+		       const int lineno )
+{
+	int pos;
+
+	if ( !(pos = eat_comment(line)) ){
+		if (log) log_msg("line %d: syntax error parsing config file", 
+				lineno);
+		return FALSE;
+	}
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("allowing cvs to all users");
+	}
+	opts->shell_flags |= RSSH_ALLOW_CVS;
+	return TRUE;
+}
+
+
+/* 
+ * process_allow_rdist() - make sure there are no tokens after the keyword,
+ *                        other than a possible comment.  If there are
+ *                        additional tokens other than comments, there is a
+ *                        syntax error, and FALSE is returned.  Otherwise, the
+ *                        line is ok, so opts are set to allow rdist, and TRUE
+ *                        is returned.
+ */
+int process_allow_rdist( ShellOptions_t *opts, 
+		       const char *line,
+		       const int lineno )
+{
+	int pos;
+
+	if ( !(pos = eat_comment(line)) ){
+		if (log) log_msg("line %d: syntax error parsing config file", 
+				lineno);
 		return FALSE;
 	}
 	log_set_priority(LOG_INFO);
-	log_msg("allowing sftp to all users");
-	opts->shell_flags |= RSSH_ALLOW_SFTP;
+	if (log){
+		log_msg("allowing rdist to all users");
+		opts->shell_flags |= RSSH_ALLOW_RDIST;
+	}
+	return TRUE;
+}
+
+
+/* 
+ * process_allow_rsync() - make sure there are no tokens after the keyword,
+ *                        other than a possible comment.  If there are
+ *                        additional tokens other than comments, there is a
+ *                        syntax error, and FALSE is returned.  Otherwise, the
+ *                        line is ok, so opts are set to allow rsync, and TRUE
+ *                        is returned.
+ */
+int process_allow_rsync( ShellOptions_t *opts, 
+		       const char *line,
+		       const int lineno )
+{
+	int pos;
+
+	if ( !(pos = eat_comment(line)) ){
+		if (log) log_msg("line %d: syntax error parsing config file", 
+				lineno);
+		return FALSE;
+	}
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("allowing rsync to all users");
+	}
+	opts->shell_flags |= RSSH_ALLOW_RSYNC;
 	return TRUE;
 }
 
@@ -433,10 +563,17 @@ int process_chroot_path( ShellOptions_t *opts,
 {
 	char	*temp;		/* to hold the assigned path */
 
-	/* get rid of any old value for chroot path, assign new one */
-	if ( opts->chroot_path ) free(opts->chroot_path);
+	/* 
+	 * older versions of rssh free()'d opts->chroot_path here, but this is
+	 * an error.  If the current config line had an error, that left the
+	 * chroot_path in an invalid state.  We now wait until after the
+	 * new chroot_path is successfully assigned by get_asgn_param() to do
+	 * the free() call.  Waiting also allows us to preserve any previous
+	 * chroot path if there is an error.
+	 */
+
 	if ( !(temp = (char *)malloc(CFG_LINE_LEN + 1)) ){
-		log_msg("fatal error: can't allocate space for chroot path");
+		if (log) log_msg("fatal error: can't allocate space for chroot path");
 		exit(1);
 	}
 	/* get_asgn_param() eats trailing comments, so we won't */
@@ -444,8 +581,13 @@ int process_chroot_path( ShellOptions_t *opts,
 		free(temp);
 		return FALSE;
 	}
-	log_set_priority(LOG_INFO);
-	log_msg("chrooting all users to %s", temp);
+	
+	/* get rid of any old value for chroot path, assign new one */
+	if ( opts->chroot_path ) free(opts->chroot_path);
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("chrooting all users to %s", temp);
+	}
 	/* we must not free temp, since opts points to it */
 	opts->chroot_path = temp;
 	opts->shell_flags |= RSSH_USE_CHROOT;
@@ -463,8 +605,10 @@ int process_log_facility( ShellOptions_t *opts,
 	int	pos;
 
 	if ( !(temp = (char *)malloc(CFG_LINE_LEN + 1)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("fatal error: can't allocate space for log facility");
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("fatal error: can't allocate space for log facility");
+		}
 		exit(1);
 	}
 	/* this eats trailing comments */
@@ -634,17 +778,20 @@ int process_log_facility( ShellOptions_t *opts,
 
 	free(temp);
 	if ( !eat_comment(line + pos) ){
-		log_msg("line %d: syntax error parsing config file", lineno);
+		if (log) log_msg("line %d: syntax error parsing config file", 
+				lineno);
 		return FALSE;
 	}
 	if ( facname ){
 		log_set_priority(LOG_INFO);
-		log_msg("setting log facility to %s", facname);
+		if (log) log_msg("setting log facility to %s", facname);
 		log_set_facility(fac);
 		return TRUE;
 	}
-	log_msg("line %d: unknown log facility specified", lineno);
-	log_set_facility(LOG_USER);
+	if (log){
+		log_msg("line %d: unknown log facility specified", lineno);
+		log_set_facility(LOG_USER);
+	}
 	return FALSE;
 }
 
@@ -657,8 +804,10 @@ int process_umask( ShellOptions_t *opts,
 	int	mask;		/* umask */
 
 	if ( !(temp = (char *)malloc(CFG_LINE_LEN + 1)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("fatal error: can't allocate space in process_umask()");
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("fatal error: can't allocate space in process_umask()");
+		}
 		exit(1);
 	}
 	/* this eats trailing comments */
@@ -669,15 +818,19 @@ int process_umask( ShellOptions_t *opts,
 
 	/* convert the umask to a number */
 	if ( !validate_umask(temp, &mask) ){
-		log_set_priority(LOG_WARNING);
-		log_msg("line %d: invalid umask specified, using default 077",
+		if (log){
+			log_set_priority(LOG_WARNING);
+			log_msg("line %d: invalid umask specified, using default 077",
 			lineno);
+		}
 		opts->rssh_umask = 077;
 		free(temp);
 		return FALSE;
 	}
-	log_set_priority(LOG_INFO);
-	log_msg("setting umask to %#o", mask);
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("setting umask to %#o", mask);
+	}
 	opts->rssh_umask = mask;
 	free(temp);
 	return TRUE;
@@ -691,21 +844,23 @@ int process_user( ShellOptions_t *opts,
 	char	user[CFG_LINE_LEN + 1];	/* username of user entry */
 	char	mask[CFG_LINE_LEN + 1]; /* user's umask */
 	char	axs[CFG_LINE_LEN + 1];	/* user's access bits */
-	char	*path;			/* user's chroot path */
+	char	*path = NULL;		/* user's chroot path */
 	int	tmpmask;		/* temporary umask holder */
 	int	pos;			/* count into line */
 	int	len;			/* add len of token to pos */
 	int	optlen;			/* string length of user options */
 	bool	allow_scp;
 	bool	allow_sftp;
+	bool	allow_cvs;
+	bool	allow_rdist;
+	bool	allow_rsync;
 
 	/* make space for user options */
 	if ( !(temp = (char *)malloc(CFG_LINE_LEN + 1)) ){
-		log_msg("fatal error: can't allocate space for user options");
+		if (log) log_msg("fatal error: can't allocate space for user options");
 		exit(1);
 	}
 
-	/* raise(SIGSTOP); */
 	/* get the config bits and eat comments */
 	if ( !get_asgn_param(line, lineno, temp, CFG_LINE_LEN) ){
 		free(temp);
@@ -715,8 +870,11 @@ int process_user( ShellOptions_t *opts,
 
 	/* now process individual config bits of temp */
 	if ( !(pos = get_token(temp, user, CFG_LINE_LEN + 1, TRUE, TRUE )) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing config file, line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing config file, line %d", 
+					lineno);
+		}
 		return FALSE;
 	}
 
@@ -729,10 +887,13 @@ int process_user( ShellOptions_t *opts,
 	 * user lines we don't care about...
 	 */
 	if ( (strcmp(user, username)) ) return TRUE;
-	log_set_priority(LOG_INFO);
-	log_msg("line %d: configuring user %s", lineno, user);
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("line %d: configuring user %s", lineno, user);
+	}
 	if ( !(len = eat_colon(temp + pos)) ){
-		log_msg("syntax error parsing config file: line %d ", lineno);
+		if (log) log_msg("syntax error parsing config file: line %d ", 
+				lineno);
 		return FALSE;
 	}
 	pos += len;
@@ -740,27 +901,35 @@ int process_user( ShellOptions_t *opts,
 	/* do the umask, but validate it last, since it's non-fatal */
 	if ( !(len = get_token(temp + pos, mask, CFG_LINE_LEN + 1, 
 			       TRUE, FALSE)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing user umask, line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing user umask, line %d", lineno);
+		}
 		return FALSE;
 	}
 	pos += len;
 
 	/* do the access bits */
 	if ( !(len = eat_colon(temp + pos)) ){
-		log_msg("syntax error parsing config file: line %d ", lineno);
+		if (log) log_msg("syntax error parsing config file: line %d ", 
+				lineno);
 		return FALSE;
 	}
 	pos += len;
 	if ( !(len = get_token(temp + pos, axs, CFG_LINE_LEN + 1, 
 			       TRUE, FALSE)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing user access, line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing user access, line %d", lineno);
+		}
 		return FALSE;
 	}
-	if ( !validate_access(axs, &allow_sftp, &allow_scp) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing access bits, line %d", lineno);
+	if ( !validate_access(axs, &allow_sftp, &allow_scp, &allow_cvs,
+			      &allow_rdist, &allow_rsync) ){
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing access bits, line %d", lineno);
+		}
 		return FALSE;
 	}
 	pos += len;
@@ -769,7 +938,7 @@ int process_user( ShellOptions_t *opts,
 	if ( !(len = eat_colon(temp + pos)) ) goto cleanup;
 	pos += len;
 	if ( !(path = (char *)malloc(CFG_LINE_LEN + 1)) ){
-		log_msg("fatal error: can't allocate space for chroot path");
+		if (log) log_msg("fatal error: can't allocate space for chroot path");
 		exit(1);
 	}
 	if ( !(len = get_token(temp + pos, path, CFG_LINE_LEN + 1, 
@@ -783,20 +952,26 @@ cleanup:
 	/* make sure nothing is left */
 	while ( *(temp + pos) != '\0' && isspace(*(temp + pos)) ) pos++;
 	if ( *(temp + pos) != '\0' ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing user config: line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing user config: line %d", lineno);
+		}
 		return FALSE;
 	}
 
 	/* now finally validate the umask */
 	if ( !validate_umask(mask, &tmpmask) ){
-		log_set_priority(LOG_WARNING);
-		log_msg("line %d: invalid umask specified, using default",
+		if (log){
+			log_set_priority(LOG_WARNING);
+			log_msg("line %d: invalid umask specified, using default",
 			lineno);
+		}
 		tmpmask = 077;
 	} 
-	log_set_priority(LOG_INFO);
-	log_msg("setting %s's umask to %#o", user, tmpmask);
+	if (log){
+		log_set_priority(LOG_INFO);
+		log_msg("setting %s's umask to %#o", user, tmpmask);
+	}
 	opts->rssh_umask = tmpmask;
 
 	/* set the rest of the parameters */
@@ -805,15 +980,27 @@ cleanup:
 	opts->shell_flags = 0;
 	/* now set the user-specific flags */
 	if ( allow_scp ){
-		log_msg("allowing scp to user %s", user);
+		if (log) log_msg("allowing scp to user %s", user);
 		opts->shell_flags |= RSSH_ALLOW_SCP;
 	}
 	if ( allow_sftp ){
-		log_msg("allowing sftp to user %s", user);
+		if (log) log_msg("allowing sftp to user %s", user);
 		opts->shell_flags |= RSSH_ALLOW_SFTP;
 	}
+	if ( allow_cvs ){
+		if (log) log_msg("allowing cvs to user %s", user);
+		opts->shell_flags |= RSSH_ALLOW_CVS;
+	}
+	if ( allow_rdist ){
+		if (log) log_msg("allowing rdist to user %s", user);
+		opts->shell_flags |= RSSH_ALLOW_RDIST;
+	}
+	if ( allow_rsync ){
+		if (log) log_msg("allowing rsync to user %s", user);
+		opts->shell_flags |= RSSH_ALLOW_RSYNC;
+	}
 	if ( path ){
-		log_msg("chrooting %s to %s", user, path);
+		if (log) log_msg("chrooting %s to %s", user, path);
 		opts->shell_flags |= RSSH_USE_CHROOT;
 	}
 	opts->chroot_path = path;
@@ -832,22 +1019,30 @@ int get_asgn_param( const char	*line,
 
 	/* make sure '=' is next token, otherwise syntax error */
 	if ( (pos = eat_assignment(line)) <= 0 ){
-		log_set_priority(LOG_ERR);
-		log_msg("error parsing config file at line %d: "
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("error parsing config file at line %d: "
 			"assignment expected", lineno);
+		}
 		return FALSE;
 	}
 	/* get the string parameter of the assignment */
 	if ( !(len = get_token((line + pos), buf, buflen, FALSE, FALSE)) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing config file, line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing config file, line %d", 
+				lineno);
+		}
 		return FALSE;
 	}
 	pos += len;
 	/* check for ending comment */
 	if ( !eat_comment(line + pos) ){
-		log_set_priority(LOG_ERR);
-		log_msg("syntax error parsing config file at line %d", lineno);
+		if (log){
+			log_set_priority(LOG_ERR);
+			log_msg("syntax error parsing config file at line %d", 
+				lineno);
+		}
 		return FALSE;
 	}
 	return pos;

@@ -1,7 +1,7 @@
 /*
  * rssh.c - restricted shell for ssh to allow scp or sftp only
  * 
- * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ * Copyright 2003-2006 Derek D. Martin ( code at pizzashack dot org ).
  *
  * This program is licensed under a BSD-style license, as follows: 
  *
@@ -56,6 +56,9 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif /* HAVE_SYS_TYPES_H */ 
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif /* HAVE_SYS_STAT_H */
 
 
 /* LOCAL INCLUDES */
@@ -64,20 +67,22 @@
 #include "pathnames.h"
 #include "log.h"
 #include "util.h"
+#include "argvec.h"
 
 
 /* FILE SCOPE FUNCTION DECLARATIONS */
 
 char **build_shell_args( struct passwd uinfo, ShellOptions_t *opts, 
 		         char *cmdline, char **cmd );
+void vers_info( void );
 
 /* GLOBAL VARIABLES */
 extern int errno;
 
 char *progname;
 char *username;
-char *version = 
-	"@PACKAGE_STRING@ (c) 2002-3 Derek D. Martin <@PACKAGE_BUGREPORT@>";
+char *version = "@PACKAGE_STRING@";
+char *copyr = "Copyright 2002-2010 Derek D. Martin <@PACKAGE_BUGREPORT@>";
 
 /* MAIN PROGRAM */
 int main( int argc, char **argv )
@@ -87,6 +92,12 @@ int main( int argc, char **argv )
 	ShellOptions_t	opts;	/* options configured by config file */
 	struct passwd	uinfo;	/* info about the user running rssh */
 	struct passwd	*temp;	/* copy temp into uinfo */ 
+
+	/* if we just want the version, give it an exit */
+	if ( argc == 2 && !( strcmp(argv[1], "-v")) ){
+		vers_info();
+		exit(0);
+	}
 
 	/* initialize variables to defaults */
 	opts.rssh_umask = 022;
@@ -98,7 +109,7 @@ int main( int argc, char **argv )
 		exit(1);
 	}
 
-	/* see who we are  and set up logging */
+	/* see who we are and set up logging */
 	if ( (temp = getpwuid(getuid())) ){
 		uinfo = *temp;
 		username = uinfo.pw_name;
@@ -111,19 +122,16 @@ int main( int argc, char **argv )
 	log_open();
 
 	/* process the config file */
-	if ( !(read_shell_config(&opts, PATH_RSSH_CONFIG)) ){
+	if ( !(read_shell_config(&opts, PATH_RSSH_CONFIG, 1)) ){
 		log_set_priority(LOG_ERR);
 		log_msg("there were errors processing configuration file!");
+		fail(0, argc, argv);
 	}
 
 	/* set the umask */
 	umask(opts.rssh_umask);
 
 	/* arg count check */
-	if ( argc == 2 && !( strcmp(argv[1], "-v")) ){
-		printf("%s\n\n", version);
-		exit(0);
-	}
 	if ( argc < 3 ) fail(opts.shell_flags, argc, argv);
 
 	/* if first arg is anything but -c, it's no good */
@@ -169,8 +177,6 @@ char **build_shell_args( struct passwd uinfo,
 		         char **cmd )
 {
 	char    **argvec;       /* argument vector for new cmd line */
-	char	*homedir;	/* relative to chroot */
-	char	*root;		/* the chroot dir */
 	char	*temp;		/* to build chroot helper cmd line */
 	int	len;
 
@@ -178,29 +184,54 @@ char **build_shell_args( struct passwd uinfo,
 	 * determine if the command in cmdline is acceptable to run, and store
 	 * name of program to exec in cmd
 	 */
-	if ( !(*cmd = check_command_line(cmdline, opts)) ) return NULL;
+	if ( !(*cmd = get_command(cmdline, opts)) ) return NULL;
 
 	/* if we need to do chroot processing, do it */
 	if ( opts->shell_flags & RSSH_USE_CHROOT ){
 		/* create vector of pointers to command line arguments */
-		root = opts->chroot_path;
-		argvec = build_arg_vector(cmdline, 4);
+
+		/* 
+		 * we don't call build_arg_vector() here, because expanding
+		 * the shell arguments before we chroot() results in a
+		 * directory transversal attack possibility, i.e. the user can
+		 * see some of the files outside the chroot jail.  We'll call
+		 * build_arg_vector() in the chroot helper instead...
+                 */
+
+		if ( !(argvec = (char **)malloc(6 * sizeof (char *))) ){
+			log_set_priority(LOG_ERR);
+			log_msg("OOM error in build_shell_args() (fatal)");
+			exit(1);
+		}
+
 		argvec[0] = PATH_CHROOT_HELPER;
-		argvec[1] = root;
+
+		/* which one is it? */
 		if ( !(strcmp(*cmd, PATH_SCP)) )
-			argvec[2] = "1";
-		else
-			argvec[2] = "2";
-		if ( !(homedir = extract_root(root, uinfo.pw_dir)) )
-			homedir = strdup("/");
-		argvec[3] = homedir;
+			argvec[1] = "1";
+		else if ( !(strcmp(*cmd, PATH_SFTP_SERVER)) )
+			argvec[1] = "2";
+		else if ( !(strcmp(*cmd, PATH_CVS)) )
+			argvec[1] = "3";
+		else if ( !(strcmp(*cmd, PATH_RDIST)) )
+			argvec[1] = "4";
+		else if ( !(strcmp(*cmd, PATH_RSYNC)) )
+			argvec[1] = "5";
+		else {
+			log_set_priority(LOG_ERR);
+			log_msg("fatal error identifying the correct command "
+				"(this should never happen)");
+			exit(1);
+		}
+		argvec[2] = cmdline;
+		argvec[3] = NULL;
 
 		/* change the command to run to the chroot helper */
 		*cmd = PATH_CHROOT_HELPER;
 
 		/* set up buffer to log command line ('"' + ' ' + '\0' = 9) */
-		len = strlen(cmdline) + strlen(root) + strlen(homedir) + 
-		      strlen(argvec[2]) + strlen(PATH_CHROOT_HELPER) + 9;
+		len = strlen(cmdline) +  strlen(argvec[2]) + 
+			strlen(PATH_CHROOT_HELPER) + 9;
 		if ( !(temp = (char *)malloc(len)) ){
 			log_set_priority(LOG_ERR);
 			log_msg("OOM error in build_shell_args() (fatal)");
@@ -208,11 +239,9 @@ char **build_shell_args( struct passwd uinfo,
 		}
 
 		/* stuff the args into the buffer */
-		snprintf(temp, len, "%s \"%s\" %s \"%s\" %s",
+		snprintf(temp, len, "%s %s \"%s\"",
 			 PATH_CHROOT_HELPER,
-			 root,
-			 argvec[2],
-			 homedir,
+			 argvec[1],
 			 cmdline);
 
 		/* now log 'em */
@@ -223,5 +252,22 @@ char **build_shell_args( struct passwd uinfo,
 	}
 
 	/* return vector of pointers to command line arguments */
-	return build_arg_vector(cmdline, 0);
+	argvec = build_arg_vector(cmdline, 0);
+	if (check_command_line(argvec, opts)) return argvec;
+	else return NULL;
 }
+
+void vers_info( void )
+{
+	printf("\n%s\n", version);
+	printf("%s\n\n", copyr);
+	printf("%20s = %s\n", "rssh config file", PATH_RSSH_CONFIG);
+	printf("%20s = %s\n", "chroot helper path", PATH_CHROOT_HELPER);
+	printf("%20s = %s\n", "scp binary path", PATH_SCP);
+	printf("%20s = %s\n", "sftp server binary", PATH_SFTP_SERVER);
+	printf("%20s = %s\n", "cvs binary path", PATH_CVS);
+	printf("%20s = %s\n", "rdist binary path", PATH_RDIST);
+	printf("%20s = %s\n\n", "rsync binary path", PATH_RSYNC);
+}
+
+

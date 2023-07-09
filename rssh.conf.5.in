@@ -16,12 +16,11 @@ contains spaces, it (or at least the space) must be enclosed in either single
 or double quotes.
 .P
 A default configuration file is provided with the source distribution of
-\fBrssh\fP.  If no configuration file is used, rssh will assume a default
-umask of 022, and allow only \fIscp\fP.  If a config file is present, the
-default is to lock out users if neither scp nor sftp have been explicitly
-allowed.
+\fBrssh\fP.  If the configuration file is missing or contains errors, \frssh\fP
+will lock out all users.  If a config file is present, the default is to lock
+out users if no services have been explicitly allowed.
 .P
-New in v2.1 is the ability to configure options on a per-user basis, using the
+New in v2.1 is the ability to configure options on a per\-user basis, using the
 user keyword.  More details are below.
 
 .SH CONFIGURATION KEYWORDS 
@@ -33,6 +32,21 @@ Tells the shell that scp is allowed.
 .B allowsftp
 .RS
 Tells the shell that sftp is allowed.
+.RE
+.P
+.B allowcvs
+.RS
+Tells the shell that cvs is allowed.
+.RE
+.P
+.B allowrdist
+.RS
+Tells the shell that rdist is allowed.
+.RE
+.P
+.B allowrsync
+.RS
+Tells the shell that rsync is allowed.
 .RE
 .P
 .B umask
@@ -63,7 +77,8 @@ to use the user facility for logging to syslog.
 Causes \fBrssh\fP (actually a helper program) to call the 
 .I chroot() 
 system call, changing the root of the file system to whatever directory is
-specified.  For example:
+specified.  Note that the value on the right hand side of the equal sign is
+the name of a directory, not a command.  For example:
 .P
 chrootpath=/usr/chroot
 .P
@@ -74,12 +89,28 @@ set up a proper chroot jail; see the file CHROOT in the rssh source
 distribution for hints about how to do this.  See also the \fIchroot\fP(2) man
 page.
 .P
+If the user's home directory (as specified in \fI/etc/passwd\fP) is underneath
+the path specified by this keyword, then the user will be chdir'd into their
+home directory.  If it is not, then they will be chdir'd to the root of the
+chroot jail.
+.P
+In other words, if the jail is \fI/chroot\fP, and your user's home directory
+is \fI/chroot/home/user\fP, then once \fBrssh_chroot_helper\fP changes the
+root of the system, it will cd into \fI/home/user\fP inside the jail.
+However, if your user's home directory is given as \fI/home/user\fP in
+\fI/etc/passwd\fP, then even if that directory exists in the jail, the chroot
+helper will not try to cd there.  The user's normal home directory must live
+inside the jail for this to work.
 .RE
+.P
 .B user
 .RS
-The user keyword allows for the configuration of options on a per-user basis.
-Its argument consists of a group of fields separated by a colon (':'), as
-shown below.  The fields are, in order:
+The user keyword allows for the configuration of options on a per\-user basis.
+.I THIS KEYWORD OVERRIDES ALL OTHER KEYWORDS FOR THE SPECIFIED USER.
+That is, if you use a user keyword for user foo, then foo will use only the
+settings in that user line, and not any of the settings set with the keywords
+above.  The user keyword's argument consists of a group of fields separated by
+a colon (':'), as shown below.  The fields are, in order:
 .P
 .B username
 .RS
@@ -91,29 +122,33 @@ The umask for this user, in octal, just as it would be specified to the shell
 .RE
 .B access bits
 .RS
-Two binary digits, which indicate whether the user is allowed to use sftp, and
-scp, in that order.
+Five binary digits, which indicate whether the user is allowed to use rsync,
+rdist, cvs, sftp, and scp, in that order.  One means the command is allowed,
+zero means it is not.
 .RE
 .B path
 .RS
-The path to which this user should be chrooted
+The \fIdirectory\fP to which this user should be chrooted (this is not a
+command, it is a directory name).  See \fBchroot_path\fP above for complete
+details.
 .RE
 .P
 For example, you might have something like this:
 .P
-user = luser:022:01:
+user = luser:022:00001:
 .P
 This does the following: for the user with the username "luser", set the umask
 to 022, disallow sftp, and allow scp.  Because there is no chroot path
 specified, the user will 
 .I not 
-be chrooted (regardless of default options set with the keywords above).  If
-you wanted this user to be chrooted, you would need to specify the chroot path
-explicitly, even if it should be the same as that set using the chrootpath
-keyword.  Remember that if there are spaces in the path, you need to quote it,
-something like this:
+be chrooted, 
+.I regardless of default options set with the keywords above.
+If you wanted this user to be chrooted, you would need to specify the chroot
+path explicitly, even if it should be the same as that set using the
+chrootpath keyword.  Remember that if there are spaces in the path, you need
+to quote it, something like this:
 .P
-user = "luser:022:01:/usr/local/chroot dir"
+user = "luser:022:00001:/usr/local/chroot dir"
 .P
 See the default rssh.conf file for more examples.
 .RE

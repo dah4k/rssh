@@ -1,21 +1,27 @@
+.\" rssh.1 - rssh man page
+.\" 
+.\" Copyright 2003-2010 Derek D. Martin
+.\"
 .\" No comment!
 .\"
-.TH RSSH 1 "7 Jul 2003" "man pages" "Derek D. Martin"
+.TH RSSH 1 "1 Aug 2010" "man pages" "Derek D. Martin"
 .SH NAME 
 rssh \- restricted secure shell allowing only scp and/or sftp 
 .SH SYNOPSIS
 .B rssh 
-.I -c scp|sftp-server 
 .RI [ " options... " ] " " [ " ... " ]
 .br
+.B rssh \-v
 .SH DESCRIPTION
 .B rssh
-is a restricted shell for providing limited access to a host via \fIssh\fP(1), 
+is a restricted shell for providing limited access to a host via \fBssh\fP(1), 
 allowing a user whose shell is configured to
 .B rssh
-to use \fIscp\fP(1) or \fIsftp\fP(1) only.  It is intended primarily to work
-with OpenSSH (see http://www.openssh.com), but may work with other
-implementations.
+to use one or more of the command(s) \fBscp\fP(1), \fBsftp\fP(1)
+\fBcvs\fP(1), \fBrdist\fP(1), and \fBrsync\fP(1), and 
+.I only
+those commands.  It is intended primarily to work with OpenSSH (see
+http://www.openssh.com), but may work with other implementations.
 .P
 The system administrator should install the shell on the restricted system.
 Then the password file entry of any user for whom it is desireable to provide
@@ -27,15 +33,15 @@ luser:x:666:666::/home/luser:/usr/bin/rssh
 .RE
 .P
 If invoked with the 
-.I -v 
+.B \-v 
 option,
 .B rssh
 will report its version, and exit.  All other arguments to 
 .B rssh
-are those specified by the remote \fIssh\fP(1) client, and aren't of much
+are those specified by the remote \fBssh\fP(1) client, and aren't of much
 concern to the average user.  The arguments provided must be what a shell on
-the remote end would receive in order to pass control to \fIscp\fP(1) or
-\fIsftp\fP(1).  If 
+the remote end would receive in order to pass control to \fBscp\fP(1),
+\fBsftp\fP(1), etc.  If 
 .B rssh
 receives arguments which do not conform, it will emit an error message and exit.
 If the program the user is trying to run is not allowed, or contains syntax
@@ -43,25 +49,177 @@ which will try to execute a shell command (such as a command substitution), it
 will also emit an error and exit.
 .P
 .B rssh
-has a configuration file, rssh.conf(5), which allows some of the behavior of
+has a configuration file, \fIrssh.conf\fP(5), which allows some of the
+behavior of 
 .B rssh
 to be customized.  See that man page for details.
 .SH SECURITY NOTES
-Prior to OpenSSH 3.5, \fIsshd\fP(8) will generally attempt to parse files in
+.I Read this section with exceptional care, or you may put your system at risk!
+.SS Using rssh With CVS
+If you are using \fBrssh\fP to allow CVS access, it should be noted that it is
+not possible to prevent a user who is very familiar with CVS from bypassing
+\fBrssh\fP and getting a shell, unless the user does not have write access in
+the repository.  Obviously, the user must have write access to the repository
+in order to update it, which allows them to upload arbitrary programs into the
+repository.  CVS provides several mechanisms for executing such arbitrary
+programs...  The only reasonably safe way to use \fBrssh\fP with CVS is to use
+the chroot jail facilities to place the CVS repository within a chroot jail.
+Please see below and all relevant documentation for details of how to set up
+chroot jails.  Note that \fIusers will still be able to get shell access
+within the jail\fP; the only protection which is provided is that they can not
+escape the jail.  I have been pursuaded to retain support for CVS because this
+protection is better than no protection.  
+.I You have been warned.  Use CVS at your own risk.
+.SS Potential root Compromise With Old Versions
+
+Before \fBrssh 2.3.0\fP, if a regular user had shell access to a machine where
+.B rssh
+was installed, a root compromise was possible due to 
+.B rssh_chroot_helper
+allowing a user to arbitrarily \fBchroot\fP(2) to anywhere on the filesystem.
+It is possible to mitigate this attack against affected versions of 
+.B rssh
+using strict access controls to files, by making sure that the user can not
+write to any file on the same partition as system executables, and that any
+partition where they can write files does not allow execution of SUID
+programs.  As of \fBrssh 2.3.0\fP, this attack has been prevented by
+preventing arbitrary chroot(), \fIif your jail is set up securely\fP.  In
+particular, make sure that regular users can not write to directories inside
+the jail which contain the copied binaries.  That should be obvious, but it
+needs to be said.  Though it should not be strictly necessary, to further
+protect your system from possible compromise, it is also advisable to follow
+the section below, entitled "Safeguards Against Bypassing rssh".
+.SS Safeguards Against Bypassing rssh
+.B rssh
+is designed to interact with several other programs.  Even if rssh is
+completely bug-free, changes in those other programs could possibly result in
+methods to circumvent the protection that
+.B rssh
+is intended to provide.  \fIIt is important for you, the system administrator,
+to stay current on the services you make available with rssh, to be sure that
+these commands do not provide mechanisms to allow the user to run arbitrary
+commands.\fP Also, while the goal of every release is to be bug free, no one
+is perfect...  There may be undiscovered bugs in 
+.B rssh 
+which might allow a user to circumvent it.
+.P
+You can protect your system from those who would take advantage of such
+weaknesses.  This is not required for \fBrssh\fP to work properly, but it is a
+really good idea.  There are six basic steps:
+.RS
+.TP
+1.
+protect all non-administrator accounts with rssh (i.e. no regular user should have shell access to the server)
+.TP
+2. 
+place your users in a chroot jail
+.TP
+3. 
+limit the binaries which live in the jail to the absolute minimum required
+.TP
+4. 
+mount their home filesystem with the noexec/nosuid option (i.e. use
+separate partitions in the jail for user home directories and all other files,
+if possible/reasonable)
+.TP
+5.
+create a group for rssh users, and limit executable access to the binaries to
+users in that group.
+.TP
+6. 
+use standard file permissions carefully and appropriately
+.RE
+.P
+If possible, make sure that no regular user has any kind of shell access to
+the system other than through \fBrssh\fP.  Otherwise, users with shell access
+could potentially exploit undiscovered bugs in 
+.B rssh_chroot_helper 
+to gain root access to the server.
+.P
+.B rssh
+gives the system administrator the ability to place the users in a chroot
+jail.  See details in the man page for
+.B rssh.conf
+and in the file
+.I CHROOT
+which is distributed with the source code.  If you want to ensure users can
+not run arbitrary programs, use a chroot jail, and be sure not to put any
+programs other than what are absolutely necessary to provide the service you
+are trying to provide.  This prevents them from running standard system
+commands.
+.P
+Then, make sure the user's files inside the jail are on a seperate filesystem
+from your system's executables.  If possible in your environment, make sure
+you mount this filesystem using the
+.IR noexec " and " nosuid
+options, if your operating system provides them.  This prevents the users from
+being able to execute programs which they have uploaded to the target machine
+(e.g. using scp) which might otherwise be executable, and prevents SUID
+programs from respecting the SUID bits.  Note that these options necessitate
+the users' files are on separate partitions from the binaries and libraries
+that live in the jail.  Therefore you will need at least 2 partitions for your
+jail to do this properly (one for the system binaries in the jail, the other
+for the user directories).
+.P
+Additionally, create a group, for example "rsshuser", for rssh users.  Put all
+your users who will be restricted by rssh in that group.  Set the ownership
+and permissions on rssh and rssh_chroot_helper so that only those users can
+execute them.  The following commands should illustrate:
+.P
+.RS
+.B # groupadd rsshuser
+.br
+.B # chown root:rsshuser rssh rssh_chroot_helper
+.br
+.B # chmod 550 rssh
+.br
+.B # chmod 4550 rssh_chroot_helper
+.br
+.RE
+.P
+Lastly, use standard Unix/POSIX file permissions to ensure they
+can not access files they should not be able to within the chroot jail.
+.SS Command Line Parser
+As of 
+.B rssh
+version 2.2.3, the program must parse out the complete command line to avoid
+command line options which cause the execution of arbitrary programs (and
+hence bypass the security of \fBrssh\fP).  In order to keep the program source
+code sane, the parser is a little over-zealous about matching command line
+options.  In practice, this probably will not be an issue, but in theory it is
+possible.  
+.P 
+If you run into a problem where
+.B rssh
+refuses to run, claiming to be rejecting insecure command line options which
+were not specified, try changing your command line such that all \fIshort\fP
+options are specified as single-letter option flags (e.g. \-e \-p instead of
+\-ep) and make sure you separate arguments from their respective options by a
+space (e.g. \-p 123 instead of \-p123).  In virtually all cases, this should
+solve the problem.  Admittedly, an exhaustive search was not performed, but no
+problematical cases were found which were likely to be common.
+.P
+The alternative would have been to include a complete command-line parser for
+rcp, rdist, and rsync; this was way out of the scope of this project.  In
+practice, the existing parser should suffice.  If, however, you find cases
+where it does not, please post details to the rssh mailing list.  Details
+about how to post to the mailing list can be found at the rssh homepage.
+.SS "OpenSSH Versions and Bypassing rssh"
+Prior to OpenSSH 3.5, \fBsshd\fP(8) will generally attempt to parse files in
 the user's home directory, and may also try to run a start-up script from the
 user's
 .I $HOME/.ssh
 directory.  
 .B rssh 
 does not make use of the user's environment in any way.  The relevant command
-is executed by calling \fIexecv\fP(3) with the full path to the command, as
+is executed by calling \fBexecv\fP(3) with the full path to the command, as
 specified at compile time.  It does not depend upon the user's PATH variable,
 or on any other environment variable.
 .P
 There are, however, several problems that can arise.  This is due entirely to
 the way the OpenSSH Project's sshd works, and is in no way the fault of
 \fBrssh\fP.  For example, one problem which might exist is that, according to
-the \fIsshd\fP(8) man page from at least some releases of OpenSSH, the
+the \fBsshd\fP(8) man page from at least some releases of OpenSSH, the
 commands listed in the
 .I $HOME/.ssh/rc
 file are executed with
@@ -85,7 +243,7 @@ If your sshd
 .I is
 vulnerable to this attack, there is a workaround for this problem, though it
 is pretty restrictive.
-.B  "The user's home directory absolutely must *not* be writable by the user."
+.I  "The user's home directory absolutely must not be writable by the user."
 If it is, the user can use sftp to remove the directory or rename it, and then
 create a new one, and fill it up with whatever environment files they like.  For
 providing file uploads, this means a user-writable directory must be created for
@@ -117,7 +275,41 @@ version 1.0.1, the configure script should detect that OpenSSH 3.5 is present,
 and disable the default of static compilation.
 .SH BUGS
 None.  =8^)
+.SS A Note About Getting Help
+If you are having trouble getting
+.B rssh
+working, or you think you've found a bug, please use the mailing list, and
+.I do not e-mail me
+\fIdirectly\fP. 
+You must sign up for the list in order to post.  Information about how to sign
+up is available on the rssh homepage.  If you mail me directly with questions,
+I will almost certainly ignore you, or at the very least ask you to repost
+your question on the mailing list.  Please also feel free to provide feedback
+about rssh on the mailing list, whether positive or negative (especially
+negative).
+.SS Security Problems
+The only exception to the above is if you believe you have found a security
+problem with \fBrssh\fP.  If that is the case, then please \fIdo\fP contact me
+privately.  If you are unable to find my direct contact info, post a message on
+the mailing list requesting that I contact you about a potential security
+problem.  Security problems should be dealt with privately, so that the threat
+can be properly assessed, and so as not to needlessly endanger the
+installations of \fBrssh\fP in production environments.  I take security
+problems seriously, and will work to resolve them as quickly as possible.
+.SS N.B.:
+Before you e-mail me (or the mailing list) with questions, be sure to 
+.I THOROUGHLY 
+read all of the following files: README, INSTALL, CHROOT, SECURITY.  All of
+these files are distributed with the rssh source code, as well as all binary
+packages of \fBrssh\fP.  If you downloaded a binary package, these files
+should be located wherever your distribution keeps its documentation files
+(usually /usr/share/doc/rssh-version/ or something similar).  Also 
+.I THOROUGHLY 
+read the man pages for \fBrssh\fP(1), and \fBrssh.conf\fP(5).  Finally, if you
+are still having problems, read the FAQ at
+http://www.pizzashack.org/rssh/faq.shtml.  If it is clear to me that you have
+not read these documents, I will ignore you.  In most cases, these documents
+will already have everything you need to get rssh working, and I won't be able
+to explain it any better on a mailing list than I did in those documents...
 .SH SEE ALSO
-\fIrssh.conf\fP(5), \fIsshd\fP(8), \fIssh\fP(1), \fIscp\fP(1), \fIsftp\fP(1).
-
-
+\fBrssh.conf\fP(5), \fBsshd\fP(8), \fBssh\fP(1), \fBscp\fP(1), \fBsftp\fP(1).

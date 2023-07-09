@@ -1,7 +1,7 @@
 /*
  * util.h - headers for utility functions for rssh
  * 
- * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ * Copyright 2003-2005 Derek D. Martin ( code at pizzashack dot org ).
  *
  * This program is licensed under a BSD-style license, as follows: 
  *
@@ -32,12 +32,14 @@
 
 #include "rsshconf.h"
 
-char **build_arg_vector( char *str, size_t reserve );
 void fail( int flags, int argc, char **argv );
-char *check_command_line( char *cl, ShellOptions_t *opts );
+char *check_command_line( char **cl, ShellOptions_t *opts );
+char *get_command( char *cl, ShellOptions_t *opts);
 char *extract_root( char *root, char *path );
 int  validate_umask( const char *temp, int *mask );
-int  validate_access( const char *temp, bool *allow_sftp, 
-		      bool *allow_scp );
+int validate_access( const char *temp, bool *allow_sftp, bool *allow_scp,
+	       	     bool *allow_cvs, bool *allow_rdist, bool *allow_rsync );
+bool opt_exist( char *cl, char opt );
+char *get_username( void );
 
 #endif /* _util_h */

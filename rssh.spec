@@ -5,13 +5,13 @@
 
 Summary: a restricted shell for scp or sftp
 Name: rssh
-Version: 2.1.1
+Version: 2.3.4
 Release: 1
 License: BSD
 Group: System Environment/Shells
 Source: http://www.pizzashack.org/rssh/src/%{name}-%{version}.tar.gz
 URL: http://www.pizzashack.org/rssh/
-Packager: Derek Martin <rssh-discuss@lists.sourceforge.net>
+Packager: Derek Martin <rssh-discuss at lists dot sourceforge dot net>
 Requires: openssh
 Provides: rssh
 
@@ -35,7 +35,7 @@ both.
 
 %files
 %defattr(644, root, root, 0755)
-%doc AUTHORS ChangeLog CHROOT COPYING README SECURITY TODO
+%doc AUTHORS ChangeLog CHROOT COPYING README SECURITY TODO conf_convert.sh mkchroot.sh
 %doc %{_mandir}/man?/*
 %config(noreplace) %{_sysconfdir}/rssh.conf
 %attr(755, root, root) %{_bindir}/rssh

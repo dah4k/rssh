@@ -41,8 +41,11 @@
 
 typedef char bool;
 
-#define RSSH_ALLOW_SCP	(1 << 0)
-#define RSSH_ALLOW_SFTP (1 << 1)
-#define RSSH_USE_CHROOT	(1 << 2)
+#define RSSH_ALLOW_SCP	 (1 << 0)
+#define RSSH_ALLOW_SFTP  (1 << 1)
+#define RSSH_ALLOW_CVS   (1 << 2)
+#define RSSH_ALLOW_RDIST (1 << 3)
+#define RSSH_ALLOW_RSYNC (1 << 4)
+#define RSSH_USE_CHROOT	 (1 << 5)
 
 #endif /* _rssh_h */

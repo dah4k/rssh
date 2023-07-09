@@ -1,7 +1,7 @@
 /*
  * log.c - log module for logging to syslog
  * 
- * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ * Copyright 2003-2005 Derek D. Martin ( code at pizzashack dot org ).
  *
  * This program is licensed under a BSD-style license, as follows: 
  *
@@ -137,7 +137,7 @@ void log_close( void )
 void log_msg( char *msg, ... )
 {
 
-	char    *format_temp;
+	char    *format_temp = NULL;
 	va_list arglist;
 	int     length;        /* length of msg */
 	int     retc;          /* return code */
@@ -156,6 +156,7 @@ void log_msg( char *msg, ... )
 	/* try to print msg to buffer, until we succeed or fail conclusively */
 	va_start( arglist, msg );
 	retc = vsnprintf( format_temp, length, msg, arglist );
+	va_end( arglist );
 
 	/* 
 	 * Check retc to make sure it fit account for differences in libc
@@ -171,7 +172,9 @@ void log_msg( char *msg, ... )
 				"Could not allocate mem in log_msg(), log.c");
 			exit(1);
 		}
+		va_start( arglist, msg );
 		vsnprintf( format_temp, retc + 1, msg, arglist );
+		va_end( arglist );
 	}
 	/* if retc == -1, we must be compiled under pre-C99 libc */
 	while ( retc == -1 ){
@@ -183,11 +186,11 @@ void log_msg( char *msg, ... )
 			exit(1);
 		}	
 		memset( format_temp, 0, length );
+		va_start( arglist, msg );
 		retc = vsnprintf( format_temp, length, msg, arglist );
+		va_end( arglist );
 	}
-
-	/* clean up arglist and log the string */
-	va_end( arglist );
-	syslog((facility | level), format_temp);
+	syslog((facility | level), "%s", format_temp);
+	free(format_temp);
 }
 

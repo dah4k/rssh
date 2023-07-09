@@ -1,7 +1,7 @@
 /*
  * rsshconf.h - headers and typedefs for rssh config module
  * 
- * Copyright 2003 Derek D. Martin ( code at pizzashack dot org ).
+ * Copyright 2003-2005 Derek D. Martin ( code at pizzashack dot org ).
  *
  * This program is licensed under a BSD-style license, as follows: 
  *
@@ -49,7 +49,7 @@ typedef struct {
 
 
 /* EXTERNALLY VISIBLE FUNCTION DECLARATIONS */
-int 	read_shell_config( ShellOptions_t *opts, const char *filename );
+int 	read_shell_config( ShellOptions_t *opts, const char *filename, int log );
 
 
 #endif /* _rssh_config_h */

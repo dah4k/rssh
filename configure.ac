@@ -1,5 +1,6 @@
+# rssh configure.ac, copyright 2003-2010 Derek D. Martin
 # Process this file with autoconf to produce a configure script.
-AC_INIT(rssh, 2.1.1, [rssh-discuss@lists.sourceforge.net])
+AC_INIT(rssh, 2.3.4, [rssh-discuss at lists dot sourceforge dot net])
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([rssh.1])
 AM_CONFIG_HEADER([config.h])
@@ -12,10 +13,10 @@ AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_CHECK_TOOL([STRIP],[strip])
 
-if test -z "$CFLAGS" && test yes = "$GCC" ; then
+if test yes = "$GCC" ; then
        defcflags="-O2 -Wall -Wshadow"
 else
-       defcflags="$CFLAGS"
+       echo "Using default flags"
 fi
 
 # Checks for libraries.
@@ -115,6 +116,60 @@ if ! test -x "$sftp_path"; then
 	AC_MSG_WARN([specified sftp-server binary does not exist])
 fi
 
+
+# CVS, rdist, and rsync might not be installed.  But we don't want to force
+# the user to configure bogus paths, so default to /usr/bin/*
+
+# Check for cvs binary
+
+AC_ARG_WITH(cvs,
+[  --with-cvs              specify path to cvs binary],
+[cvs_path="$withval"], [cvs_path=""])
+
+AC_PATH_PROG(cvs_path, cvs, [], [])
+if test -z "$cvs_path"; then
+	AC_MSG_WARN([can't find cvs - using /usr/bin/cvs.  Use --with-cvs to override])
+	cvs_path=/usr/bin/cvs
+fi
+
+if ! test -x "$cvs_path"; then
+	AC_MSG_WARN([specified cvs binary does not exist])
+fi
+
+# Check for rdist binary
+
+AC_ARG_WITH(rdist,
+[  --with-rdist              specify path to rdist binary],
+[rdist_path="$withval"], [rdist_path=""])
+
+AC_PATH_PROG(rdist_path, rdist, [], [])
+if test -z "$rdist_path"; then
+	AC_MSG_WARN([can't find rdist - using /usr/bin/rdist.  Use --with-rdist to override])
+	rdist_path=/usr/bin/rdist
+fi
+
+if ! test -x "$rdist_path"; then
+	AC_MSG_WARN([specified rdist binary does not exist])
+fi
+
+
+# Check for rsync binary
+
+AC_ARG_WITH(rsync,
+[  --with-rsync              specify path to rsync binary],
+[rsync_path="$withval"], [rsync_path=""])
+
+AC_PATH_PROG(rsync_path, rsync, [], [])
+if test -z "$rsync_path"; then
+	AC_MSG_WARN([can't find rsync - using /usr/bin/rsync.  Use --with-rsync to override])
+	rsync_path=/usr/bin/rsync
+fi
+
+if ! test -x "$rsync_path"; then
+	AC_MSG_WARN([specified rsync binary does not exist])
+fi
+
+
 # disable static configuration
 
 AC_ARG_ENABLE(static, 
@@ -142,6 +197,9 @@ fi
 
 AC_SUBST(scp_path)
 AC_SUBST(sftp_path)
+AC_SUBST(cvs_path)
+AC_SUBST(rdist_path)
+AC_SUBST(rsync_path)
 AC_SUBST(prefix)
 AC_SUBST(sysconfdir)
 AC_SUBST(libexecdir)

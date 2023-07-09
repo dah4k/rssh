@@ -2,23 +2,69 @@ Setting up a chroot jail for rssh
 ---------------------------------
 
 This document is intended to provide some hints for setting up a chroot jail
-for rssh v2.1.  It is virtually impossible to provide exact instructions for
-this, due to differences in things like the libraries on different systems,
-whether or not the binaries are statically linked, etc.
+for rssh v2.1 and later.  It is virtually impossible to provide exact
+instructions for this, due to differences in things like the libraries on
+different systems, whether or not the binaries are statically linked, etc.
+
+IMPORTANT NOTE ABOUT wordexp() IMPLEMENTATIONS:  rssh requires a working
+implementation of the wordexp() library function, specified by POSIX.2 (or
+whatever they're calling it these days).  A number of vendors ship a version
+of wordexp() that execvp()'s the system shell in order to expand the
+arguments.  This means that if you are using such a platform, you'll need to
+copy their system shell into the chroot jail, along with all the other
+necessary files.  The symptoms of this problem are:
+
+  1. When a user logs in, they immediately get "Connection closed."
+  2. In the system logs, rssh reports "error expanding arguments for user ..."
+
+For Solaris 9, the required shell is /bin/ksh.  For AIX 5.2, you need
+/usr/bin/ksh93.  FreeBSD also has this problem, but I don't know what the
+default system shell is on FreeBSD.  Other platforms will probably also
+experience this problem. If you need help determining which shell to include,
+try running rssh with strace or truss, whichever your system has.  See the
+relevant manpages for details.
+
+NOTE: There is now a shell script provided with rssh which should create
+working chroot jails, at least on Red Hat linux systems, and probably on most
+derivatives of Red Hat (like Fedora, etc.).  It will probably also work with
+other Linux distributions, and may work on other platforms, with some minor
+modifications.  
+
+N.B.: if you are not installing from the official Red Hat RPM provided on the
+Sourceforge page, you may need to edit the script to modify some of the paths
+before it will work for you.  This includes cases where you are installing
+from source.  The script expects to find rssh_chroot_helper in /usr/libexec,
+but installing from source may leave it elsewhere, depending on what options
+you gave to the ./configure script.
+
+Even if you plan to use the script, please read the rest of this document so
+that you understand what it is doing, in case things go wrong.  To run the
+script, you just need to give it the directory you want to use as your chroot
+jail:
+
+    <path to script>/mkchroot.sh /my/chroot/jail
+
+There are a few other options, which will not be needed by most users.  For
+details, have a look at the shell script.  It's pretty well commented, and
+should be self-explanatory.
+
+
+Setting up the jail manually
+----------------------------
 
 The important things to note about building a chroot jail is that you must
-duplicate parts of the root file system, those parts containing the libraries
+duplicate parts of the root file system: those parts containing the libraries
 needed for whatever binaries you will be using, the configuration files for
 those binaries, /etc/passwd, and possibly other things.  So if your chroot
 jail is /usr/chroot, you'll need to copy those items into the same locations
 relative to /usr/chroot.  For example, you will need to copy /etc/passwd to
 /usr/chroot/etc/passwd.
 
-You will also need to copy the binaries for rssh, scp, and sftp-server into
-your chroot jail, in the same locations as they were configured by rssh, but
-relative to the chroot jail.  For example, by default on Red Hat systems (my
-development platform), the binaries you need to use rssh are usually installed
-in the following locations:
+You will also need to copy the binaries for rssh_chroot_helper, scp, and
+sftp-server into your chroot jail, in the same locations as they were
+configured by rssh, but relative to the chroot jail.  For example, by default
+on Red Hat systems (my development platform), the binaries you need to use
+rssh are usually installed in the following locations:
 
   /usr/bin/scp
   /usr/libexec/openssh/sftp-server
@@ -102,7 +148,8 @@ for authentication.  For example, in my testing, I needed to copy
 /lib/libnss_files.so.? into the chroot jail.  Without it, the scp command
 failed, complaining that my user ID was an unknown user.  If you use LDAP
 authentication on the server, you will probably need to also copy
-libnss_ldap.so.? into your chroot jail.
+libnss_ldap.so.? into your chroot jail.  Similar requirements likely exist for
+other authentication methods...
 
 
 Logging
@@ -144,10 +191,10 @@ production.
 Individual jails for different users
 ------------------------------------
 
-In v2.1, you are now able to specify the location of different chroot jails
+Since v2.1, you are now able to specify the location of different chroot jails
 for different users, whether or not to chroot individual users, etc.  You
 might be tempted to create individual jails for each different user, and you
-can do that, BUT...  It's probably a bad idea.
+can do that, BUT... it's probably a very bad idea.
 
 There are several reasons for this.  First, it uses lots of disk space,
 because you need to copy the libraries and such into each one (though in some
@@ -157,11 +204,12 @@ activity, you need to create a socket for syslog to log to (i.e. /dev/log, see
 above) in each of the chroot jails.  However, the number of sockets syslog can
 listen to is generally limited.  On most Linux systems, that limit is a
 maximum of 20, though it can be changed by editing the source code to syslogd.
-So if you go with individual chroot jails, you either need to be satisfied
-without logging for most of your users, or recompile syslogd and manually
-configure it to open a socket in each of your users' jails.  And while I
-haven't done it, I suspect creating large numbers of sockets for syslogd to
-listen to will make logging to syslog somewhat painful.
+On other platforms, this may not even be possible.  So if you go with
+individual chroot jails, you either need to be satisfied without logging for
+most of your users, or recompile syslogd and manually configure it to open a
+socket in each of your users' jails.  And while I haven't done it, I suspect
+creating large numbers of sockets for syslogd to listen to will make logging
+to syslog somewhat painful.
 
 My recommendation is, if you really really really need individual chroot
 jails, use them.  But if you can, configure a single jail where the majority
@@ -175,9 +223,9 @@ Conclusion
 
 Setting up a proper chroot jail can be difficult, and it is always a very
 environment-specific operation.  Because of this, I can not and will not
-provide any sort of support for setting up chroot jails.  However, in the near
-future, I will make sure there is a mailing list for rssh, where you can ask
-questions.
+provide any sort of support for setting up chroot jails.  However, there is a
+mailing list for rssh, where you can ask questions.  See the rssh homepage for
+details.
 
 If you are having problems, make sure that you have logging set up properly,
 if nothing else.  Doing so will help you determine what kind of problems you

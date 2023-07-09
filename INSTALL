@@ -1,7 +1,9 @@
 rssh installation
 -----------------
 
-To install rssh, the following steps should suffice:
+If you are upgrading from a previous version of rssh, see the notes in the
+last section of this file.  Otherwise, to install rssh, the following steps
+should suffice:
 
   $ ./configure
   $ make
@@ -59,4 +61,29 @@ sure you run the configure script with --disable-static to build dynamically
 linked binaries.  This implies that you should be running OpenSSH 3.5 or
 later, with the option PermitUserEnvironment set to no, for security reasons.
 See the file SECURITY and/or the rssh man page for more information.
+
+
+Upgrading from a previous version of rssh
+-----------------------------------------
+
+If you are upgrading to 2.2.x from a previous 2.x.x release, you should note
+that the configuration file format has changed.  A shell script is provided to
+convert between the old format and the new format.  The change in formats is
+very minor; there are extra digits in the permissions field.  The script
+initializes any existing entries to all zeros for the new permissions fields.
+
+If your config file is /etc/rssh.conf, you can invoke the script simply like
+this:
+
+  # ./conf_convert.sh
+
+Otherwise, you must pass the location of the config file on the command line,
+like so:
+
+  # ./conf_convert.sh /usr/local/etc/rssh.conf
+
+The script will save a new copy of your config file with the necessary changes
+into <path to old config file>.NEW if it is successful.   BE VERY CAREFUL!
+Depending on if you do any strange quoting in your config file, the restulting
+config file may not be usable.  It should be fine for most users, however.
 
